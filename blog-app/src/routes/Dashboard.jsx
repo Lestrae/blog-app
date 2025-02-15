@@ -1,6 +1,6 @@
 import { Outlet, Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { supabase } from '../supabaseClient'
+import { supabase } from '../supbaseClient'
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { UserAuth } from "../context/AuthContext";
