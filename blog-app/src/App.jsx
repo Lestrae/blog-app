@@ -1,4 +1,3 @@
-
 import { useEffect, useState, useCallback } from "react";
 import { supabase } from "./supbaseClient";
 
@@ -10,27 +9,53 @@ function App() {
   const [loading, setLoading] = useState(false);
 
   const fetchArticles = useCallback(async () => {
-    const { data, error } = await supabase
-      .from("articles")
-      .select("*")
-      .order("created_at", { ascending: false });
-    
-    if (!error) setArticles(data);
+    try {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from("articles")
+        .select("*")
+        .order("created_at", { ascending: false });
+      
+      if (!error) setArticles(data);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    const validateSession = async (session) => {
+      if (!session) return false;
+      try {
+        const { error } = await supabase.auth.getUser(session.access_token);
+        return !error;
+      } catch (error) {
+        return false;
+      }
+    };
+  
+    supabase.auth.getSession().then(async ({ data: { session }, error }) => {
+      if (error || !(await validateSession(session))) {
+        await supabase.auth.signOut();
+        setSession(null);
+        return;
+      }
       setSession(session);
+      if (session) await fetchArticles(); // Add this line
     });
-
+  
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (_event, session) => {
+        if (!(await validateSession(session))) {
+          await supabase.auth.signOut();
+          setSession(null);
+          return;
+        }
         setSession(session);
         if (session) await fetchArticles();
       }
     );
-
-    return () => subscription.unsubscribe();
+  
+    return () => subscription?.unsubscribe();
   }, [fetchArticles]);
 
   useEffect(() => {
@@ -46,7 +71,6 @@ function App() {
           table: "articles",
         },
         (payload) => {
-          // Add console.log for debugging
           console.log("Change received:", payload);
           if (payload.eventType === "INSERT") {
             setArticles(prev => [payload.new, ...prev]);
@@ -64,12 +88,15 @@ function App() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [session]); // Ensure session is in dependencies
+  }, [session]);
+  // ... rest of the code remains unchanged ...
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!newArticle.title.trim()) return;
-  
+    if (!session) {
+      alert("Session expired. Please log in again.");
+      return;
+    }
     try {
       if (editingId) {
         const { data, error } = await supabase
@@ -106,8 +133,21 @@ function App() {
   };
 
   const handleDelete = async (id) => {
+    if (!session) {
+      alert("Session expired. Please log in again.");
+      return;
+    }
     if (window.confirm("Are you sure you want to delete this article?")) {
-      await supabase.from("articles").delete().eq("id", id);
+      try {
+        await supabase
+          .from("articles")
+          .delete()
+          .eq("id", id)
+          .eq("user_id", session.user.id);
+      } catch (error) {
+        console.error("Delete failed:", error);
+        alert(`Error: ${error.message}`);
+      }
     }
   };
 
@@ -136,14 +176,17 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen bg-neutral-800 p-4">
+    <div className="min-h-screen bg-neutral-800 bg-linear-to-t/srgb from-indigo-500 to-teal-400 p-4">
       <div className="max-w-4xl mx-auto">
-        <div className="flex justify-between items-center mb-8 p-4 bg-black rounded shadow">
+        <div className="flex justify-between items-center mb-8 p-4 bg-black backdrop-blur-sm opacity-90 rounded shadow">
           <div>
             <p className="font-semibold">{session.user.user_metadata.email}</p>
             <button
-              onClick={() => supabase.auth.signOut().then(() => setSession(null))}
-              className="text-sm text-gray-600 hover:text-gray-800"
+              onClick={() => {
+                setSession(null);  // Immediately clear local session
+                supabase.auth.signOut().catch(console.error);
+              }}
+              className="text-sm text-gray-200 hover:text-gray-800"
             >
               Sign out
             </button>
@@ -155,7 +198,7 @@ function App() {
           />
         </div>
 
-        <form onSubmit={handleSubmit} className="mb-8 bg-black p-4 rounded shadow">
+        <form onSubmit={handleSubmit} className="mb-8 bg-black backdrop-blur-sm opacity-90 p-4 rounded shadow">
           <input
             type="text"
             placeholder="Article Title"
@@ -179,14 +222,14 @@ function App() {
                   setEditingId(null);
                   setNewArticle({ title: "", description: "" });
                 }}
-                className="px-4 py-2 text-gray-600 hover:text-gray-800"
+                className="px-4 py-2 text-gray-200 hover:text-gray-800"
               >
                 Cancel
               </button>
             )}
             <button
               type="submit"
-              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+              className="px-4 py-2 bg-blue-600 text-gray-400 rounded hover:bg-blue-700"
             >
               {editingId ? "Update Article" : "Post Article"}
             </button>
@@ -195,7 +238,7 @@ function App() {
 
         <div className="space-y-4">
           {articles.map((article) => (
-            <div key={article.id} className="bg-black p-4 rounded shadow">
+            <div key={article.id} className="bg-black backdrop-blur-sm opacity-90 p-4 rounded shadow">
               <div className="flex items-start justify-between mb-2">
                 <div className="flex items-center gap-2">
                   <img
@@ -227,7 +270,7 @@ function App() {
                     </button>
                     <button
                       onClick={() => handleDelete(article.id)}
-                      className="text-red-600 hover:text-red-800"
+                      className="text-teal-600 hover:text-red-800"
                     >
                       Delete
                     </button>
@@ -235,7 +278,7 @@ function App() {
                 )}
               </div>
               <h2 className="text-xl font-bold mb-2">{article.title}</h2>
-              <p className="text-gray-700 whitespace-pre-wrap">
+              <p className="text-gray-500 whitespace-pre-wrap">
                 {article.description}
               </p>
             </div>
