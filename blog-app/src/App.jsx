@@ -1,216 +1,249 @@
 
-import { useEffect, useState, useRef } from "react";
-import { supabase } from "./supbaseClient.js";
+import { useEffect, useState, useCallback } from "react";
+import { supabase } from "./supbaseClient";
 
 function App() {
-  const [session, setSession] = useState([]);
-  const [messages, setMessages] = useState([]);
-  const [newMessage, setNewMessage] = useState("");
-  const [usersOnline, setUsersOnline] = useState([]);
+  const [session, setSession] = useState(null);
+  const [articles, setArticles] = useState([]);
+  const [newArticle, setNewArticle] = useState({ title: "", description: "" });
+  const [editingId, setEditingId] = useState(null);
+  const [loading, setLoading] = useState(false);
 
-  const chatContainerRef = useRef(null);
-  const scroll = useRef();
+  const fetchArticles = useCallback(async () => {
+    const { data, error } = await supabase
+      .from("articles")
+      .select("*")
+      .order("created_at", { ascending: false });
+    
+    if (!error) setArticles(data);
+  }, []);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
     });
 
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (_event, session) => {
+        setSession(session);
+        if (session) await fetchArticles();
+      }
+    );
 
     return () => subscription.unsubscribe();
-  }, []);
-
-  console.log(session);
-
-  // sign in
-  const signIn = async () => {
-    await supabase.auth.signInWithOAuth({
-      provider: "google",
-    });
-  };
-
-  // sign out
-  const signOut = async () => {
-    const { error } = await supabase.auth.signOut();
-  };
+  }, [fetchArticles]);
 
   useEffect(() => {
-    if (!session?.user) {
-      setUsersOnline([]);
-      return;
-    }
-    const roomOne = supabase.channel("room_one", {
-      config: {
-        presence: {
-          key: session?.user?.id,
+    if (!session) return;
+  
+    const channel = supabase
+      .channel("articles-channel")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "articles",
         },
-      },
-    });
-
-    roomOne.on("broadcast", { event: "message" }, (payload) => {
-      setMessages((prevMessages) => [...prevMessages, payload.payload]);
-      // console.log(messages);
-    });
-
-    // track user presence subscribe!
-    roomOne.subscribe(async (status) => {
-      if (status === "SUBSCRIBED") {
-        await roomOne.track({
-          id: session?.user?.id,
-        });
-      }
-    });
-
-    // handle user presence
-    roomOne.on("presence", { event: "sync" }, () => {
-      const state = roomOne.presenceState();
-      setUsersOnline(Object.keys(state));
-    });
-
+        (payload) => {
+          // Add console.log for debugging
+          console.log("Change received:", payload);
+          if (payload.eventType === "INSERT") {
+            setArticles(prev => [payload.new, ...prev]);
+          } else if (payload.eventType === "UPDATE") {
+            setArticles(prev => prev.map(article => 
+              article.id === payload.new.id ? payload.new : article
+            ));
+          } else if (payload.eventType === "DELETE") {
+            setArticles(prev => prev.filter(a => a.id !== payload.old.id));
+          }
+        }
+      )
+      .subscribe();
+  
     return () => {
-      roomOne.unsubscribe();
+      supabase.removeChannel(channel);
     };
-  }, [session]);
+  }, [session]); // Ensure session is in dependencies
 
-  // send message
-  const sendMessage = async (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-
-    supabase.channel("room_one").send({
-      type: "broadcast",
-      event: "message",
-      payload: {
-        message: newMessage,
-        user_name: session?.user?.user_metadata?.email,
-        avatar: session?.user?.user_metadata?.avatar_url,
-        timestamp: new Date().toISOString(),
-      },
-    });
-    setNewMessage("");
+    if (!newArticle.title.trim()) return;
+  
+    try {
+      if (editingId) {
+        const { data, error } = await supabase
+          .from("articles")
+          .update({
+            ...newArticle,
+            updated_at: new Date().toISOString(),
+            user_id: session.user.id // Add this line
+          })
+          .eq("id", editingId)
+          .eq("user_id", session.user.id); // Add this for RLS compliance
+      
+        if (error) throw error;
+        setEditingId(null);
+        setNewArticle({ title: "", description: "" });
+      
+      } else {
+        const { data, error } = await supabase.from("articles").insert({
+          ...newArticle,
+          user_id: session.user.id,
+          user_name: session.user.user_metadata.email,
+          avatar: session.user.user_metadata.avatar_url,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        });
+  
+        if (error) throw error;
+        setNewArticle({ title: "", description: "" });
+      }
+    } catch (error) {
+      console.error("Operation failed:", error);
+      alert(`Error: ${error.message}`);
+    }
   };
 
-  const formatTime = (isoString) => {
-    return new Date(isoString).toLocaleTimeString("en-us", {
+  const handleDelete = async (id) => {
+    if (window.confirm("Are you sure you want to delete this article?")) {
+      await supabase.from("articles").delete().eq("id", id);
+    }
+  };
+
+  const formatDate = (isoString) => {
+    const date = new Date(isoString);
+    return date.toLocaleDateString("en-us", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
       hour: "numeric",
       minute: "2-digit",
-      hour12: true,
     });
   };
-
-  useEffect(() => {
-    setTimeout(() => {
-      if (chatContainerRef.current) {
-        chatContainerRef.current.scrollTop =
-          chatContainerRef.current.scrollHeight;
-      }
-    }, [100]);
-  }, [messages]);
 
   if (!session) {
     return (
-      <div className="w-full flex h-screen justify-center items-center">
-        <button onClick={signIn}>Sign in with Google to chat</button>
-      </div>
-    );
-  } else {
-    return (
-      <div className="w-full flex h-screen justify-center items-center p-4">
-        <div className="border-[1px] border-gray-700 max-w-6xl w-full min-h-[600px] rounded-lg">
-          {/* Header */}
-          <div className="flex justify-between h-20 border-b-[1px] border-gray-700">
-            <div className="p-4">
-              <p className="text-gray-300">
-                Signed in as {session?.user?.user_metadata?.email}
-              </p>
-              <p className="text-gray-300 italic text-sm">
-                {usersOnline.length} users online
-              </p>
-            </div>
-            <button onClick={signOut} className="m-2 sm:mr-4">
-              Sign out
-            </button>
-          </div>
-          {/* main chat */}
-          <div
-            ref={chatContainerRef}
-            className="p-4 flex flex-col overflow-y-auto h-[500px]"
-          >
-            {messages.map((msg, idx) => (
-              <div
-                key={idx}
-                className={`my-2 flex w-full items-start ${
-                  msg?.user_name === session?.user?.email
-                    ? "justify-end"
-                    : "justify-start"
-                }`}
-              >
-                {/* received message - avatar on left */}
-                {msg?.user_name !== session?.user?.email && (
-                  <img
-                    src={msg?.avatar}
-                    alt="/"
-                    className="w-10 h-10 rounded-full mr-2"
-                  />
-                )}
-
-                <div className="flex flex-col w-full">
-                  <div
-                    className={`p-1 max-w-[70%] rounded-xl ${
-                      msg?.user_name === session?.user?.email
-                        ? "bg-gray-700 text-white ml-auto"
-                        : "bg-gray-500 text-white mr-auto"
-                    }`}
-                  >
-                    <p>{msg.message}</p>
-                  </div>
-                  {/* timestamp */}
-                  <div
-                    className={`text-xs opactiy-75 pt-1 ${
-                      msg?.user_name === session?.user?.email
-                        ? "text-right mr-2"
-                        : "text-left ml-2"
-                    }`}
-                  >
-                    {formatTime(msg?.timestamp)}
-                  </div>
-                </div>
-
-                {msg?.user_name === session?.user?.email && (
-                  <img
-                    src={msg?.avatar}
-                    alt="/"
-                    className="w-10 h-10 rounded-full ml-2"
-                  />
-                )}
-              </div>
-            ))}
-          </div>
-          {/* message input */}
-          <form
-            onSubmit={sendMessage}
-            className="flex flex-col sm:flex-row p-4 border-t-[1px] border-gray-700"
-          >
-            <input
-              value={newMessage}
-              onChange={(e) => setNewMessage(e.target.value)}
-              type="text"
-              placeholder="Type a message..."
-              className="p-2 w-full bg-[#00000040] rounded-lg"
-            />
-            <button className="mt-4 sm:mt-0 sm:ml-8 text-white max-h-12">
-              Send
-            </button>
-            <span ref={scroll}></span>
-          </form>
-        </div>
+      <div className="min-h-screen flex items-center justify-center">
+        <button
+          onClick={() => supabase.auth.signInWithOAuth({ provider: "google" })}
+          className="px-4 py-2 bg-blue-600 text-white rounded"
+        >
+          Sign in with Google to continue
+        </button>
       </div>
     );
   }
+
+  return (
+    <div className="min-h-screen bg-neutral-800 p-4">
+      <div className="max-w-4xl mx-auto">
+        <div className="flex justify-between items-center mb-8 p-4 bg-black rounded shadow">
+          <div>
+            <p className="font-semibold">{session.user.user_metadata.email}</p>
+            <button
+              onClick={() => supabase.auth.signOut().then(() => setSession(null))}
+              className="text-sm text-gray-600 hover:text-gray-800"
+            >
+              Sign out
+            </button>
+          </div>
+          <img
+            src={session.user.user_metadata.avatar_url}
+            alt="User avatar"
+            className="w-10 h-10 rounded-full"
+          />
+        </div>
+
+        <form onSubmit={handleSubmit} className="mb-8 bg-black p-4 rounded shadow">
+          <input
+            type="text"
+            placeholder="Article Title"
+            value={newArticle.title}
+            onChange={(e) => setNewArticle(prev => ({ ...prev, title: e.target.value }))}
+            className="w-full mb-2 p-2 border rounded text-pretty"
+            required
+          />
+          <textarea
+            placeholder="Article Content"
+            value={newArticle.description}
+            onChange={(e) => setNewArticle(prev => ({ ...prev, description: e.target.value }))}
+            className="w-full mb-2 p-2 border rounded h-32"
+            required
+          />
+          <div className="flex justify-end gap-2">
+            {editingId && (
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingId(null);
+                  setNewArticle({ title: "", description: "" });
+                }}
+                className="px-4 py-2 text-gray-600 hover:text-gray-800"
+              >
+                Cancel
+              </button>
+            )}
+            <button
+              type="submit"
+              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+            >
+              {editingId ? "Update Article" : "Post Article"}
+            </button>
+          </div>
+        </form>
+
+        <div className="space-y-4">
+          {articles.map((article) => (
+            <div key={article.id} className="bg-black p-4 rounded shadow">
+              <div className="flex items-start justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <img
+                    src={article.avatar}
+                    alt="Author"
+                    className="w-8 h-8 rounded-full"
+                  />
+                  <div>
+                    <p className="font-semibold">{article.user_name}</p>
+                    <p className="text-sm text-gray-500">
+                      {formatDate(article.updated_at || article.created_at)}
+                      {article.updated_at && " (edited)"}
+                    </p>
+                  </div>
+                </div>
+                {article.user_id === session.user.id && (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => {
+                        setEditingId(article.id);
+                        setNewArticle({
+                          title: article.title,
+                          description: article.description,
+                        });
+                      }}
+                      className="text-blue-600 hover:text-blue-800"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => handleDelete(article.id)}
+                      className="text-red-600 hover:text-red-800"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                )}
+              </div>
+              <h2 className="text-xl font-bold mb-2">{article.title}</h2>
+              <p className="text-gray-700 whitespace-pre-wrap">
+                {article.description}
+              </p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export default App;
