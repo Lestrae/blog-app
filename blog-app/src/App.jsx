@@ -6,7 +6,7 @@ function App() {
   const [articles, setArticles] = useState([]);
   const [newArticle, setNewArticle] = useState({ title: "", description: "" });
   const [editingId, setEditingId] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   const fetchArticles = useCallback(async () => {
     try {
@@ -40,7 +40,7 @@ function App() {
         return;
       }
       setSession(session);
-      if (session) await fetchArticles(); // Add this line
+      if (session) await fetchArticles(); 
     });
   
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
@@ -89,7 +89,7 @@ function App() {
       supabase.removeChannel(channel);
     };
   }, [session]);
-  // ... rest of the code remains unchanged ...
+  
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -104,10 +104,10 @@ function App() {
           .update({
             ...newArticle,
             updated_at: new Date().toISOString(),
-            user_id: session.user.id // Add this line
+            user_id: session.user.id 
           })
           .eq("id", editingId)
-          .eq("user_id", session.user.id); // Add this for RLS compliance
+          .eq("user_id", session.user.id); // for RLS compliance
       
         if (error) throw error;
         setEditingId(null);
@@ -176,17 +176,17 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen bg-neutral-800 bg-linear-to-t/srgb from-indigo-500 to-teal-400 p-4">
-      <div className="max-w-4xl mx-auto">
-        <div className="flex justify-between items-center mb-8 p-4 bg-black backdrop-blur-sm opacity-90 rounded shadow">
+    <div className="min-h-screen text-pretty bg-neutral-800 bg-linear-to-t/srgb from-indigo-500 to-teal-400 p-4">
+      <div className="max-w-4xl mx-auto text-pretty">
+        <div className="flex justify-between shadow-lg shadow-black text-pretty items-center mb-8 p-4 bg-black backdrop-blur-sm opacity-85 rounded shadow">
           <div>
-            <p className="font-semibold">{session.user.user_metadata.email}</p>
+            <p className="font-semibold">{session.user.user_metadata.name}</p>
             <button
               onClick={() => {
                 setSession(null);  // Immediately clear local session
                 supabase.auth.signOut().catch(console.error);
               }}
-              className="text-sm text-gray-200 hover:text-gray-800"
+              className="text-sm text-gray-200 hover:text-red-700 p-1 bg-linear-to-b/srgb from-gray-800 to-gray-900 p-3 opacity-85"
             >
               Sign out
             </button>
@@ -198,23 +198,23 @@ function App() {
           />
         </div>
 
-        <form onSubmit={handleSubmit} className="mb-8 bg-black backdrop-blur-sm opacity-90 p-4 rounded shadow">
+        <form onSubmit={handleSubmit} className="mb-8 text-pretty shadow-lg shadow-black bg-black backdrop-blur-sm opacity-85 p-4 rounded shadow">
           <input
             type="text"
             placeholder="Article Title"
             value={newArticle.title}
             onChange={(e) => setNewArticle(prev => ({ ...prev, title: e.target.value }))}
-            className="w-full mb-2 p-2 border rounded text-pretty"
+            className="w-full mb-2 p-2 border rounded text-pretty break-words opacity-100"
             required
           />
           <textarea
             placeholder="Article Content"
             value={newArticle.description}
             onChange={(e) => setNewArticle(prev => ({ ...prev, description: e.target.value }))}
-            className="w-full mb-2 p-2 border rounded h-32"
+            className="w-full mb-2 p-2 border rounded h-32 text-pretty"
             required
           />
-          <div className="flex justify-end gap-2">
+          <div className="flex text-pretty justify-end gap-2">
             {editingId && (
               <button
                 type="button"
@@ -222,40 +222,40 @@ function App() {
                   setEditingId(null);
                   setNewArticle({ title: "", description: "" });
                 }}
-                className="px-4 py-2 text-gray-200 hover:text-gray-800"
+                className="px-4 py-2 text-orange-400 hover:text-gray-800 bg-linear-to-b/srgb from-gray-800 to-gray-900 p-3 opacity-85"
               >
                 Cancel
               </button>
             )}
             <button
               type="submit"
-              className="px-4 py-2 bg-blue-600 text-gray-400 rounded hover:bg-blue-700"
+              className="px-4 py-2 bg-blue-600 text-blue-400 rounded hover:bg-blue-700 bg-linear-to-b/srgb from-gray-800 to-gray-900 p-3 opacity-85"
             >
               {editingId ? "Update Article" : "Post Article"}
             </button>
           </div>
         </form>
 
-        <div className="space-y-4">
+        <div className="space-y-4 text-pretty">
           {articles.map((article) => (
-            <div key={article.id} className="bg-black backdrop-blur-sm opacity-90 p-4 rounded shadow">
-              <div className="flex items-start justify-between mb-2">
+            <div key={article.id} className="bg-black shadow-lg shadow-black text-wrap backdrop-blur-sm opacity-85 p-4 rounded shadow">
+              <div className="flex text-pretty items-start justify-between mb-2">
                 <div className="flex items-center gap-2">
                   <img
                     src={article.avatar}
                     alt="Author"
                     className="w-8 h-8 rounded-full"
                   />
-                  <div>
-                    <p className="font-semibold">{article.user_name}</p>
-                    <p className="text-sm text-gray-500">
+                  <div className="text-pretty">
+                    <p className="font-semibold text-blue-400">{article.user_name}</p>
+                    <p className="text-sm text-pretty text-teal-700">
                       {formatDate(article.updated_at || article.created_at)}
                       {article.updated_at && " (edited)"}
                     </p>
                   </div>
                 </div>
                 {article.user_id === session.user.id && (
-                  <div className="flex gap-2">
+                  <div className="flex gap-1 p-0">
                     <button
                       onClick={() => {
                         setEditingId(article.id);
@@ -264,21 +264,21 @@ function App() {
                           description: article.description,
                         });
                       }}
-                      className="text-blue-600 hover:text-blue-800"
+                      className="text-blue-600 hover:text-blue-800 bg-linear-to-b/srgb from-gray-800 to-gray-900 p-3 opacity-85"
                     >
                       Edit
                     </button>
                     <button
                       onClick={() => handleDelete(article.id)}
-                      className="text-teal-600 hover:text-red-800"
+                      className="text-teal-600 hover:text-red-800 bg-linear-to-b/srgb from-gray-800 to-gray-900 p-3"
                     >
                       Delete
                     </button>
                   </div>
                 )}
               </div>
-              <h2 className="text-xl font-bold mb-2">{article.title}</h2>
-              <p className="text-gray-500 whitespace-pre-wrap">
+              <h2 className="text-xl text-gray-300 font-bold mb-2 break-words">{article.title}</h2>
+              <p className="text-gray-400 text-pretty whitespace-pre-wrap break-words">
                 {article.description}
               </p>
             </div>
