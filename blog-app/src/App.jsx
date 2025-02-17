@@ -22,41 +22,38 @@ function App() {
     }
   }, []);
 
-  useEffect(() => {
-    const validateSession = async (session) => {
+    const validateSession = (session) => {
       if (!session) return false;
-      try {
-        const { error } = await supabase.auth.getUser(session.access_token);
-        return !error;
-      } catch (error) {
-        return false;
-      }
+      const currentTime = Math.floor(Date.now() / 1000); // Current time in seconds
+      return session.expires_at > currentTime;
     };
   
-    supabase.auth.getSession().then(async ({ data: { session }, error }) => {
-      if (error || !(await validateSession(session))) {
-        await supabase.auth.signOut();
-        setSession(null);
-        return;
-      }
-      setSession(session);
-      if (session) await fetchArticles(); 
-    });
-  
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
-        if (!(await validateSession(session))) {
+    useEffect(() => {
+      supabase.auth.getSession().then(async ({ data: { session }, error }) => {
+        if (error || !validateSession(session)) {
           await supabase.auth.signOut();
           setSession(null);
           return;
         }
         setSession(session);
         if (session) await fetchArticles();
-      }
-    );
+      });
+
+      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_, session) => {
+        if (session?.user) {
+          setTimeout(async () => {
+            // Call database here !
+            const { data } = await supabase
+                .from('users')
+                .select('*')
+                .eq('id', session.user.id)
+                .single();
+          })
+        }
+      });
   
-    return () => subscription?.unsubscribe();
-  }, [fetchArticles]);
+      return () => subscription?.unsubscribe();
+    }, [fetchArticles]);
 
   useEffect(() => {
     if (!session) return;
@@ -117,7 +114,7 @@ function App() {
         const { data, error } = await supabase.from("articles").insert({
           ...newArticle,
           user_id: session.user.id,
-          user_name: session.user.user_metadata.email,
+          user_name: session.user.user_metadata.name || session.user.email,
           avatar: session.user.user_metadata.avatar_url,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
@@ -166,7 +163,11 @@ function App() {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <button
-          onClick={() => supabase.auth.signInWithOAuth({ provider: "google" })}
+          onClick={() => supabase.auth.signInWithOAuth({ 
+            provider: "google", 
+            options: {
+            scopes: 'https://www.googleapis.com/auth/userinfo.profile' } 
+        })}
           className="px-4 py-2 bg-blue-600 text-white rounded"
         >
           Sign in with Google to continue
@@ -204,14 +205,14 @@ function App() {
             placeholder="Article Title"
             value={newArticle.title}
             onChange={(e) => setNewArticle(prev => ({ ...prev, title: e.target.value }))}
-            className="w-full mb-2 p-2 border rounded text-pretty break-words opacity-100"
+            className="w-full mb-2 p-2 border-1 border-indigo-500 rounded text-white text-pretty break-words opacity-85"
             required
           />
           <textarea
             placeholder="Article Content"
             value={newArticle.description}
             onChange={(e) => setNewArticle(prev => ({ ...prev, description: e.target.value }))}
-            className="w-full mb-2 p-2 border rounded h-32 text-pretty"
+            className="w-full mb-2 p-2 border-1 border-indigo-500 rounded h-32 text-white text-pretty opacity-85"
             required
           />
           <div className="flex text-pretty justify-end gap-2">
@@ -250,7 +251,7 @@ function App() {
                     <p className="font-semibold text-blue-400">{article.user_name}</p>
                     <p className="text-sm text-pretty text-teal-700">
                       {formatDate(article.updated_at || article.created_at)}
-                      {article.updated_at && " (edited)"}
+                      {article.updated_at && ""}
                     </p>
                   </div>
                 </div>
