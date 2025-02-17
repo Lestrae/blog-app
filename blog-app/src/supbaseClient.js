@@ -1,32 +1,15 @@
-// import { createClient } from '@supabase/supabase-js'
-// const supabaseUrl = 'https://kjyfmyplmdqnztifgtgk.supabase.co'
-// const supabaseKey = process.env.SUPABASE_KEY
-// const supabase = createClient(supabaseUrl, supabaseKey)
-
 import { createClient } from '@supabase/supabase-js'
 
-console.log('URL:', import.meta.env.VITE_SUPABASE_URL)
-console.log('KEY:', import.meta.env.VITE_SUPABASE_KEY)
+//VITE_SUPABASE_URL='https://zgedeuxhmfzodolyjiek.supabase.co'
+//VITE_SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpnZWRldXhobWZ6b2RvbHlqaWVrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Mzk2Mjc5OTksImV4cCI6MjA1NTIwMzk5OX0.vecjXrSFy79iD6EVz66QjMitNqqMEpOitGTDWV_U9QE'
+        
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+
+const supabaseUrl = 'https://zgedeuxhmfzodolyjiek.supabase.co'
+const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpnZWRldXhobWZ6b2RvbHlqaWVrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Mzk2Mjc5OTksImV4cCI6MjA1NTIwMzk5OX0.vecjXrSFy79iD6EVz66QjMitNqqMEpOitGTDWV_U9QE'
 
 export const supabase = createClient(
   supabaseUrl, 
   supabaseAnonKey, 
-  { auth: {
-    storage: localStorage,
-    autoRefreshToken: true,
-    persistSession: true,
-    detectSessionInUrl: true
-  }}
 );
 
-// {
-  // auth: {
-  //   storage: localStorage,
-  //   autoRefreshToken: true,
-  //   persistSession: true,
-  //   detectSessionInUrl: true
-  // }
-// }
